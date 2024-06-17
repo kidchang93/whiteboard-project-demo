@@ -2,9 +2,9 @@
   <div id="whiteboard">
     <canvas
       ref="canvas"
-      @mousedown="startDrawing"
-      @mousemove="draw"
-      @mouseup="stopDrawing"
+      @mousedown="handleMouseDown"
+      @mousemove="handleMouseMove"
+      @mouseup="handleMouseUp"
       style="z-index: 1"
     >
     </canvas>
@@ -20,8 +20,8 @@
       <span class="info">{{ color }}</span>
       <input type="color" :value="color" id="drawing-color" ref="drawingColorEl" @change="changeColor"><br>
 
-
-      <button type="button" id="drawing-rect" ref="drawingRectEl" @click="addRect">사각형 추가</button><br>
+      <button type="button" id="togglePen" ref="toggleButtonEl" @click="toggleDrawMode">그리기</button><br>
+      <button type="button" id="drawing-rect" ref="drawingRectEl" @click="toggleRectMode">사각형 추가</button><br>
       <button type="button" id="clickObject" @click="clickObject">객체 선택</button><br>
 
     </div>
@@ -55,6 +55,9 @@ export default {
       mouseX: 0,
       mouseY: 0,
       rect:{},
+      // 캔버스 모드 변수
+      drawMode:false,
+      rectMode:false,
       // 두 수의 차이
       xMinusX:0,
       yMinusY:0,
@@ -63,6 +66,9 @@ export default {
       lineWidth: 10,
       color: '#ffffff',
       lineCap: 'round',
+      // 사각형 변수
+      rectStartX: 0,
+      rectStartY: 0,
     };
   },
 
@@ -100,15 +106,31 @@ export default {
 
 
     // 그리기 시작 함수
-    startDrawing(e) {
-      this.drawing = true;
-      // mouseDown 이벤트 발생시 현재 좌표값 업데이트
+    // startDrawing(e) {
+    //   this.drawing = true;
+    //   // mouseDown 이벤트 발생시 현재 좌표값 업데이트
+    //
+    //   this.lastX = e.clientX - this.rect.x;
+    //   this.lastY = e.clientY - this.rect.y;
+    //
+    //   console.log("offset : ",this.rect , this.lastY);
+    //
+    // },
 
-      this.lastX = e.clientX - this.rect.x;
-      this.lastY = e.clientY - this.rect.y;
-
-      console.log("offset : ",this.rect , this.lastY);
-
+    // 모드에 따라 변하는 event속성
+    handleMouseDown(e) {
+      // 사각형 모드시
+      if (this.rectMode) {
+        this.rectStartX = e.clientX - this.rect.left;
+        this.rectStartY = e.clientY - this.rect.top;
+        this.drawing = true;
+        // 드로잉 모드시
+      } else if (this.drawMode) {
+        this.drawing = true;
+        this.lastX = e.clientX - this.rect.left;
+        this.lastY = e.clientY - this.rect.top;
+      }
+      console.log("현재 모드 : ",this.drawing);
     },
 
     // 선 굵기 변경
@@ -124,62 +146,135 @@ export default {
       this.color = e.target.value;
     },
 
-    // 그리기 함수
-    draw(e) {
+    handleMouseMove(e){
       if (!this.drawing) return;
 
-      // 현재 좌표값
-      const newX = e.clientX - this.rect.left;
-      const newY = e.clientY - this.rect.top;
-      // 좌표 업데이트
-      const prevX = this.lastX;
-      const prevY = this.lastY;
+      // 사각형 모드일 때
+      if (this.rectMode) {
+        // this.clearRect();
 
-      // 그리기 시작
-      this.context.stroke();
-      // 도형 그리기 시작 + 도형 그릴 시작점 지정. 도형 쪽으로 옮기기
-      this.context.beginPath();
-      this.context.moveTo(this.lastX, this.lastY);
-      // 선이 끝나는 좌표 설정
-      this.context.lineTo(newX, newY);
-      // 선 굵기 설정 = 현재 선택된 선 굵기
-      this.context.lineWidth = this.lineWidth;
-      // 선 색상 설정 = 현재 선택된 선 색상
-      this.context.strokeStyle = this.color;
-      // 도형 그릴 시작점 지정. 도형 쪽으로 옮기기
+        const x = e.clientX - this.rect.left;
+        const y = e.clientY - this.rect.top;
+        this.context.strokeRect(this.rectStartX, this.rectStartY, x - this.rectStartX, y - this.rectStartY);
 
-      this.lastX = newX;
-      this.lastY = newY;
+        // 드로잉 모드일 때
+      } else if (this.drawMode) {
 
-      console.log("draw : ", this.lastX, this.lastY);
+        const newX = e.clientX - this.rect.left;
+        const newY = e.clientY - this.rect.top;
+        //   // 좌표 업데이트
+        const prevX = this.lastX;
+        const prevY = this.lastY;
+        this.context.beginPath();
+        this.context.moveTo(this.lastX, this.lastY);
+        this.context.lineTo(newX, newY);
 
-      // 메시지 전송
-      const message = JSON.stringify({
-        type: "DRAW",
-        sender: this.sender,
-        data: {
-          x: this.lastX,
-          y: this.lastY,
-          prevX,
-          prevY,
-          color: this.color,
-          lineWidth: this.lineWidth,
-        },
-      });
-      if (this.$root.$socket && this.$root.$socket.connected) {
-        this.$root.$socket.publish({
-          destination: `/pub/update/${this.classCode}`,
-          body: message,
+        this.context.lineWidth = this.lineWidth;
+        this.context.strokeStyle = this.color;
+        this.context.stroke();
+
+        this.lastX = newX;
+        this.lastY = newY;
+
+        // 메시지 전송
+        const message = JSON.stringify({
+          type: "DRAW",
+          sender: this.sender,
+          data: {
+            x: this.lastX,
+            y: this.lastY,
+            prevX,
+            prevY,
+            color: this.color,
+            lineWidth: this.lineWidth,
+          },
         });
+        if (this.$root.$socket && this.$root.$socket.connected) {
+          this.$root.$socket.publish({
+            destination: `/pub/update/${this.classCode}`,
+            body: message,
+          });
+        }
       }
     },
+
+    // 그리기 함수
+    // draw(e) {
+    //   if (!this.drawing) return;
+    //
+    //   // 현재 좌표값
+    //   const newX = e.clientX - this.rect.left;
+    //   const newY = e.clientY - this.rect.top;
+    //   // 좌표 업데이트
+    //   const prevX = this.lastX;
+    //   const prevY = this.lastY;
+    //
+    //   // 그리기 시작
+    //   this.context.stroke();
+    //   // 도형 그리기 시작 + 도형 그릴 시작점 지정. 도형 쪽으로 옮기기
+    //   this.context.beginPath();
+    //   this.context.moveTo(this.lastX, this.lastY);
+    //   // 선이 끝나는 좌표 설정
+    //   this.context.lineTo(newX, newY);
+    //   // 선 굵기 설정 = 현재 선택된 선 굵기
+    //   this.context.lineWidth = this.lineWidth;
+    //   // 선 색상 설정 = 현재 선택된 선 색상
+    //   this.context.strokeStyle = this.color;
+    //   // 도형 그릴 시작점 지정. 도형 쪽으로 옮기기
+    //
+    //   this.lastX = newX;
+    //   this.lastY = newY;
+    //
+    //   console.log("draw : ", this.lastX, this.lastY);
+    //
+    //   // 메시지 전송
+    //   const message = JSON.stringify({
+    //     type: "DRAW",
+    //     sender: this.sender,
+    //     data: {
+    //       x: this.lastX,
+    //       y: this.lastY,
+    //       prevX,
+    //       prevY,
+    //       color: this.color,
+    //       lineWidth: this.lineWidth,
+    //     },
+    //   });
+    //   if (this.$root.$socket && this.$root.$socket.connected) {
+    //     this.$root.$socket.publish({
+    //       destination: `/pub/update/${this.classCode}`,
+    //       body: message,
+    //     });
+    //   }
+    // },
     // 그리기 스탑
-    stopDrawing() {
+    handleMouseUp() {
       this.drawing = false;
     },
     // 지우개 버튼
     buttonErase() {
       this.context.clearRect(0, 0, this.$refs.canvas.width, this.$refs.canvas.height);
+    },
+    toggleDrawMode() {
+      this.drawMode = !this.drawMode;
+      this.rectMode = false;
+    },
+    toggleRectMode() {
+      this.rectMode = !this.rectMode;
+      this.drawMode = false;
+    },
+    // 사각형 추가
+    addRect(e){
+      this.drawing = false;
+      const nowContext = this.context;
+
+      let x = e.clientX - this.rect.left;
+      let y = e.clientY - this.rect.top;
+      let w = 50;
+      let h = 50;
+      console.log("x - w / 2, y - h, w, h : ",x - w / 2, y - h, w, h)
+      nowContext.strokeRect(x - w / 2, y - h, w, h );
+
     },
 
     // 메시지 수신 처리 함수
